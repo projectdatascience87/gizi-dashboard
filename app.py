@@ -16,7 +16,12 @@ data = pd.read_excel(data_file)
 
 # Bersihkan kolom Tanggal_Pengukuran
 if 'Tanggal_Pengukuran' in data.columns:
-    data['Tanggal_Pengukuran'] = pd.to_datetime(data['Tanggal_Pengukuran'], errors='coerce')
+    data['Tanggal_Pengukuran'] = data['Tanggal_Pengukuran'].astype(str).str.strip()
+    data['Tanggal_Pengukuran'] = pd.to_datetime(data['Tanggal_Pengukuran'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+elif 'Tanggal Pengukuran' in data.columns:
+    data['Tanggal Pengukuran'] = data['Tanggal Pengukuran'].astype(str).str.strip()
+    data['Tanggal Pengukuran'] = pd.to_datetime(data['Tanggal Pengukuran'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+    data.rename(columns={'Tanggal Pengukuran': 'Tanggal_Pengukuran'}, inplace=True)
 else:
     st.error("Kolom 'Tanggal_Pengukuran' tidak ditemukan dalam data.")
     st.stop()
@@ -36,6 +41,10 @@ def extract_years(age_str):
 
 data['Usia_Saat_Ukur'] = data['Usia_Saat_Ukur'].apply(extract_years)
 
+# Mengubah nama desa menjadi uppercase di GeoJSON
+for feature in geo_data['features']:
+    feature['properties']['name'] = feature['properties']['name'].upper()
+
 # Warna untuk status gizi
 status_colors = {
     'Gizi Baik': 'green',
@@ -44,78 +53,90 @@ status_colors = {
     'Gizi Lebih': 'blue'
 }
 
-# Sidebar Navigation
-st.sidebar.title("Dashboard Gizi Anak")
-menu = st.sidebar.radio("Navigasi", ["Beranda", "Analisis Gizi", "Clustering", "Peta"])
+# Judul aplikasi dengan gaya modern
+st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Dashboard Pemetaan dan Analisis Gizi</h1>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #555;'>Kabupaten Indramayu</h3>", unsafe_allow_html=True)
 
-# Judul Dashboard
-st.markdown(
-    """
-    <style>
-        .main-title {
-            font-size: 2.5em;
-            color: #4CAF50;
-            text-align: center;
-            font-weight: bold;
-        }
-    </style>
-    <div class="main-title">Dashboard Gizi Anak di Indramayu</div>
-    """,
-    unsafe_allow_html=True
-)
+# Membagi layout menjadi kolom
+col1, col2 = st.columns(2)
 
-# Beranda
-if menu == "Beranda":
-    st.markdown("### Selamat Datang di Dashboard Gizi Anak Update 2024 di Indramayu!")
-    st.write("Gunakan navigasi di sebelah kiri untuk melihat analisis data, clustering, dan peta.")
+with col1:
+    st.subheader("Filter Status Gizi")
+    status_filter = st.multiselect(
+        "Pilih Status Gizi untuk Ditampilkan:",
+        options=data['Status_Gizi'].unique(),
+        default=data['Status_Gizi'].unique()
+    )
+    data_filtered = data[data['Status_Gizi'].isin(status_filter)]
 
-# Analisis Gizi
-elif menu == "Analisis Gizi":
-    st.header("Analisis Daerah dengan Tingkat Gizi Terburuk")
-    worst_gizi = data[data['Status_Gizi'] == 'Gizi Buruk']
+with col2:
+    st.subheader("Data Statistik")
+    worst_gizi = data_filtered[data_filtered['Status_Gizi'] == 'Gizi Buruk']
     worst_summary = worst_gizi.groupby('Desa_Kel').size().reset_index(name='Jumlah Anak Gizi Buruk')
     worst_summary = worst_summary.sort_values(by='Jumlah Anak Gizi Buruk', ascending=False)
+    st.metric("Total Desa", len(worst_summary))
+    st.metric("Total Anak Gizi Buruk", worst_summary['Jumlah Anak Gizi Buruk'].sum())
 
-    st.subheader("Daftar Desa dengan Jumlah Anak Gizi Buruk Tertinggi")
-    st.dataframe(worst_summary)
+# Visualisasi tabel dan rekomendasi
+st.subheader("Analisis Daerah dengan Tingkat Gizi Terburuk")
+st.dataframe(worst_summary)
 
-# Clustering
-elif menu == "Clustering":
-    st.header("Clustering Daerah Berdasarkan Status Gizi")
-    cluster_features = data.groupby('Desa_Kel').size().reset_index(name='Total Anak')
-    kmeans = KMeans(n_clusters=3, random_state=42)
-    cluster_features['Cluster'] = kmeans.fit_predict(cluster_features[['Total Anak']])
+if not worst_summary.empty:
+    top_desa = worst_summary.iloc[0]
+    st.warning(f"Desa prioritas: **{top_desa['Desa_Kel']}** dengan **{top_desa['Jumlah Anak Gizi Buruk']} anak gizi buruk**.")
 
-    st.subheader("Hasil Clustering")
-    st.dataframe(cluster_features)
+# Clustering menggunakan K-Means
+st.subheader("Clustering Berdasarkan Status Gizi")
+cluster_features = data_filtered.groupby('Desa_Kel').size().reset_index(name='Total Anak')
+kmeans = KMeans(n_clusters=3, random_state=42)
+cluster_features['Cluster'] = kmeans.fit_predict(cluster_features[['Total Anak']])
+st.bar_chart(cluster_features.set_index('Desa_Kel')['Total Anak'])
 
-# Peta
-elif menu == "Peta":
-    st.header("Peta Persebaran Status Gizi")
-    m = folium.Map(location=[-6.454198, 108.3626961], zoom_start=10)
+# Membuat peta dasar
+st.subheader("Peta Persebaran Status Gizi")
+m = folium.Map(location=[-6.454198, 108.3626961], zoom_start=10)
 
-    for feature in geo_data['features']:
-        desa_name = feature['properties']['name']
-        subset = data[data['Desa_Kel'].str.upper() == desa_name]
-        if not subset.empty:
-            status_counts = subset['Status_Gizi'].value_counts()
-            total_anak = status_counts.sum()
-            dominant_status = status_counts.idxmax()
-            dominant_color = status_colors.get(dominant_status, 'purple')
+# Menambahkan marker berdasarkan data
+for feature in geo_data['features']:
+    desa_name = feature['properties']['name']
+    subset = data_filtered[data_filtered['Desa_Kel'].str.upper() == desa_name]
+    if not subset.empty:
+        status_counts = subset['Status_Gizi'].value_counts()
+        total_anak = status_counts.sum()
+        dominant_status = status_counts.idxmax()
+        dominant_color = status_colors.get(dominant_status, 'purple')
 
-            tooltip_content = f"<b>Desa: {desa_name}</b><br>Total Anak: {total_anak}<br>"
-            for status_gizi, jumlah in status_counts.items():
-                presentase = (jumlah / total_anak) * 100
-                tooltip_content += f"<i style='color:{status_colors[status_gizi]};'>{status_gizi}: {jumlah} ({presentase:.2f}%)</i><br>"
+        tooltip_content = f"<b>Desa: {desa_name}</b><br>Total Anak: {total_anak}<br>"
+        for status_gizi, jumlah in status_counts.items():
+            presentase = (jumlah / total_anak) * 100
+            color = status_colors.get(status_gizi, 'purple')
+            tooltip_content += f"<span style='color:{color};'>• {status_gizi}: {jumlah} anak ({presentase:.2f}%)</span><br>"
 
-            folium.CircleMarker(
-                location=[feature['geometry']['coordinates'][1], feature['geometry']['coordinates'][0]],
-                radius=15,
-                color='black',
-                fill=True,
-                fill_color=dominant_color,
-                fill_opacity=0.8,
-                tooltip=tooltip_content
-            ).add_to(m)
+        folium.CircleMarker(
+            location=[feature['geometry']['coordinates'][1], feature['geometry']['coordinates'][0]],
+            radius=15,
+            color='black',
+            fill=True,
+            fill_color=dominant_color,
+            fill_opacity=0.8,
+            tooltip=tooltip_content
+        ).add_to(m)
 
-    st_folium(m, width=700, height=500)
+# Menambahkan legenda
+legend_html = """
+{% macro html(this, kwargs) %}
+<div style="position: fixed; bottom: 50px; left: 50px; width: 200px; height: 150px; 
+background-color: white; z-index:9999; font-size:14px; border:2px solid grey; padding: 10px;">
+<b>Status Gizi:</b><br>
+<i style="background:green; width:10px; height:10px; display:inline-block;"></i> Gizi Baik<br>
+<i style="background:red; width:10px; height:10px; display:inline-block;"></i> Gizi Buruk<br>
+<i style="background:orange; width:10px; height:10px; display:inline-block;"></i> Gizi Kurang<br>
+<i style="background:blue; width:10px; height:10px; display:inline-block;"></i> Gizi Lebih<br>
+</div>
+{% endmacro %}
+"""
+legend = MacroElement()
+legend._template = Template(legend_html)
+m.get_root().add_child(legend)
+
+st_folium(m, width=700, height=500)
