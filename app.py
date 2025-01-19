@@ -1,175 +1,129 @@
 import streamlit as st
 import pandas as pd
 import folium
+import json
 from streamlit_folium import st_folium
 from sklearn.cluster import KMeans
-import json
-import random
-
-import pandas as pd
-
-import pandas as pd
-
-file_gabungan = 'Gizi_Anak_Indramayu.xlsx'
-gabungan = pd.read_excel(file_gabungan)
-
-
-if 'Tanggal_Pengukuran' in gabungan.columns:
-    # Bersihkan data kolom
-    gabungan['Tanggal_Pengukuran'] = gabungan['Tanggal_Pengukuran'].astype(str).str.strip()
-
-    # Ubah kolom 'Tanggal_Pengukuran' menjadi format datetime dengan format eksplisit
-    gabungan['Tanggal_Pengukuran'] = pd.to_datetime(
-        gabungan['Tanggal_Pengukuran'],
-        format='%Y-%m-%d %H:%M:%S',
-        errors='coerce'
-    )
-
-    # Filter data hanya untuk tahun 2024
-    data_2024 = gabungan[gabungan['Tanggal_Pengukuran'].dt.year == 2024]
-
-    data_2024 = data_2024.dropna(subset=['Tanggal_Pengukuran'])
-
-elif 'Tanggal Pengukuran' in gabungan.columns:
-    gabungan['Tanggal Pengukuran'] = gabungan['Tanggal Pengukuran'].astype(str).str.strip()
-    gabungan['Tanggal Pengukuran'] = pd.to_datetime(
-        gabungan['Tanggal Pengukuran'],
-        format='%Y-%m-%d %H:%M:%S',
-        errors='coerce'
-    )
-    data_2024 = gabungan[gabungan['Tanggal Pengukuran'].dt.year == 2024]
-    data_2024 = data_2024.dropna(subset=['Tanggal Pengukuran'])
-else:
-    raise ValueError("Kolom 'Tanggal_Pengukuran' atau 'Tanggal Pengukuran' tidak ditemukan dalam data.")
-
-# Fungsi untuk mengekstrak tahun dari string usia
-def extract_years(age_str):
-    if isinstance(age_str, str) and 'Tahun' in age_str:
-        try:
-            return int(age_str.split('Tahun')[0].strip())
-        except ValueError:
-            return None  # Kembalikan None jika tidak bisa dikonversi
-    return None  # Kembalikan None jika format tidak sesuai
-
-# Langkah 3: Mengambil usia dari kolom 'Usia_Saat_Ukur'
-data_2024['Usia_Saat_Ukur'] = data_2024['Usia_Saat_Ukur'].apply(extract_years)
-
-# Menghilangkan kategori 'Outlier' dari data
-data_filtered = data_2024[data_2024['Status_Gizi'] != 'Outlier']
-# Menghitung jumlah anak untuk setiap Status Gizi tanpa kategori 'Outlier'
-status_counts = data_filtered['Status_Gizi'].value_counts().reset_index()
-status_counts.columns = ['Status_Gizi', 'Jumlah']
-
-# Langkah 5: Mengelompokan data berdasarkan Status Gizi, Usia Saat Ukur, dan Wilayah Desa
-grouped_data = data_filtered.groupby(['Desa_Kel', 'Usia_Saat_Ukur', 'Status_Gizi']).size().reset_index(name='Jumlah')
-
+from branca.element import Template, MacroElement
 
 # Membaca file GeoJSON
 with open('indramayu.geojson') as f:
     geo_data = json.load(f)
 
-# Mengubah nama desa menjadi uppercase
+# Membaca data status gizi
+data_file = 'Gizi_Anak_Indramayu.xlsx'  # Ganti dengan nama file data Anda
+data = pd.read_csv(data_file)
+
+# Mengubah nama desa menjadi uppercase di GeoJSON
 for feature in geo_data['features']:
     feature['properties']['name'] = feature['properties']['name'].upper()
 
-desa_names = [
-    'BOJONGSARI', 'DUKUH', 'KARANGANYAR', 'KARANGMALANG', 'KARANGSONG',
-    'KEPANDEAN', 'LEMAHABANG', 'LEMAHMEKAR', 'MARGADADI', 'PABEANUDIK',
-    'PAOMAN', 'PECANDANGAN', 'PEKANDANGAN JAYA', 'PLUMBON', 'SINGA',
-    'SINGARAJA', 'TAMBAK', 'TELUKAGUNG'
-]
+# Warna untuk status gizi
+status_colors = {
+    'Gizi Baik': 'green',
+    'Gizi Buruk': 'red',
+    'Gizi Kurang': 'orange',
+    'Gizi Lebih': 'blue'
+}
 
-# Generate random data for Status_Gizi to match the length of desa_names
-status_gizi_options = ['Gizi Buruk', 'Gizi Baik', 'Gizi Kurang', 'Gizi Lebih']
-status_gizi = [random.choice(status_gizi_options) for _ in range(len(desa_names))]
+# Judul aplikasi
+st.title("Pemetaan dan Analisis Gizi di Indramayu")
 
-# Membuat data gizi
-data_filtered = pd.DataFrame({
-    'Desa_Kel': desa_names,
-    'Status_Gizi': status_gizi
-})
+# Filter data berdasarkan status gizi jika diinginkan
+status_filter = st.multiselect(
+    "Pilih Status Gizi untuk Ditampilkan:",
+    options=data['Status_Gizi'].unique(),
+    default=data['Status_Gizi'].unique()
+)
 
-data_filtered['Desa_Kel'] = data_filtered['Desa_Kel'].str.upper()
+data_filtered = data[data['Status_Gizi'].isin(status_filter)]
 
-# Membuat pivot table berdasarkan Status_Gizi
-data_pivot = data_filtered.pivot_table(
-    index='Desa_Kel',
-    columns='Status_Gizi',
-    aggfunc='size',
-    fill_value=0
-).reset_index()
+# Analisis tingkat gizi terburuk
+st.header("Analisis Daerah dengan Tingkat Gizi Terburuk")
+worst_gizi = data[data['Status_Gizi'] == 'Gizi Buruk']
+worst_summary = worst_gizi.groupby('Desa_Kel').size().reset_index(name='Jumlah Anak Gizi Buruk')
+worst_summary = worst_summary.sort_values(by='Jumlah Anak Gizi Buruk', ascending=False)
 
-data_pivot.columns.name = None
+st.subheader("Daftar Desa dengan Jumlah Anak Gizi Buruk Tertinggi")
+st.dataframe(worst_summary)
 
-data_pivot = data_pivot.rename(columns={
-    'Desa_Kel': 'Desa_Kel',
-    'Gizi Buruk': 'Gizi Buruk',
-    'Gizi Baik': 'Gizi Baik',
-    'Gizi Kurang': 'Gizi Kurang',
-    'Gizi Lebih': 'Gizi Lebih'
-})
+# Menambahkan rekomendasi
+st.subheader("Rekomendasi Intervensi Pemerintah")
+if not worst_summary.empty:
+    top_desa = worst_summary.iloc[0]
+    st.write(f"Desa dengan prioritas tertinggi untuk intervensi adalah **{top_desa['Desa_Kel']}**, "
+             f"dengan jumlah **{top_desa['Jumlah Anak Gizi Buruk']} anak** yang mengalami gizi buruk. "
+             "Pemerintah dapat memprioritaskan pengiriman makanan bergizi ke desa ini.")
+else:
+    st.write("Tidak ada data gizi buruk untuk dianalisis.")
 
-# Menambahkan koordinat desa
-coordinates = []
-for desa in data_pivot['Desa_Kel']:
-    found = False
-    for feature in geo_data['features']:
-        if feature['properties']['name'] == desa:
-            coordinates.append(feature['geometry']['coordinates'])
-            found = True
-            break
-    if not found:
-        coordinates.append([0, 0])
+# Clustering menggunakan K-Means
+st.header("Clustering Daerah Berdasarkan Status Gizi")
+cluster_features = data.groupby('Desa_Kel').size().reset_index(name='Total Anak')
+kmeans = KMeans(n_clusters=3, random_state=42)
+cluster_features['Cluster'] = kmeans.fit_predict(cluster_features[['Total Anak']])
 
-data_pivot['Coordinates'] = coordinates
-
-# K-Means Clustering
-X = data_pivot[['Gizi Buruk']].values
-kmeans = KMeans(n_clusters=3, random_state=42).fit(X)
-data_pivot['Cluster'] = kmeans.labels_
-
-# Streamlit UI
-st.title("Pemetaan Daerah dengan Tingkat Gizi Buruk")
-st.markdown("""
-Aplikasi ini memvisualisasikan tingkat gizi buruk di wilayah tertentu, 
-dengan prioritas intervensi berdasarkan clustering.
-""")
+st.subheader("Hasil Clustering")
+st.dataframe(cluster_features)
 
 # Membuat peta dasar
 m = folium.Map(location=[-6.454198, 108.3626961], zoom_start=10)
 
-# Menambahkan marker untuk setiap desa
-for _, row in data_pivot.iterrows():
-    desa_name = row['Desa_Kel']
-    coords = row['Coordinates']
-    cluster = row['Cluster']
-    color = 'red' if cluster == 2 else 'orange' if cluster == 1 else 'green'
+# Menambahkan marker berdasarkan data
+for feature in geo_data['features']:
+    desa_name = feature['properties']['name']
 
-    tooltip_content = f"""
-    <b>Desa: {desa_name}</b><br>
-    Gizi Buruk: {row['Gizi Buruk']} anak<br>
-    Gizi Baik: {row['Gizi Baik']} anak<br>
-    Gizi Kurang: {row['Gizi Kurang']} anak<br>
-    Gizi Lebih: {row['Gizi Lebih']} anak<br>
-    Prioritas Intervensi: {"Tinggi" if cluster == 2 else "Sedang" if cluster == 1 else "Rendah"}
-    """
+    # Filter data untuk desa tertentu tanpa 'Outlier'
+    subset = data_filtered[(data_filtered['Desa_Kel'].str.upper() == desa_name) & (data_filtered['Status_Gizi'] != 'Outlier')]
 
-    if coords != [0, 0]:
+    if not subset.empty:
+        status_counts = subset['Status_Gizi'].value_counts()
+        total_anak = status_counts.sum()
+        dominant_status = status_counts.idxmax()
+        dominant_color = status_colors.get(dominant_status, 'purple')
+
+        tooltip_content = f"<b>Desa: {desa_name}</b><br>Total Anak: {total_anak}<br><br>"
+        for status_gizi, jumlah in status_counts.items():
+            presentase = (jumlah / total_anak) * 100
+            color = status_colors.get(status_gizi, 'purple')
+            tooltip_content += f"""
+            <span style="color:{color};">
+                • {status_gizi}: {jumlah} anak ({presentase:.2f}%)
+            </span><br>
+            """
+
+        # Menambahkan marker untuk desa tersebut dengan Tooltip
         folium.CircleMarker(
-            location=[coords[1], coords[0]],
+            location=[feature['geometry']['coordinates'][1], feature['geometry']['coordinates'][0]],
             radius=15,
             color='black',
             fill=True,
-            fill_color=color,
+            fill_color=dominant_color,
             fill_opacity=0.8,
-            tooltip=tooltip_content
+            tooltip=folium.Tooltip(tooltip_content, sticky=True)
         ).add_to(m)
 
-# Menambahkan peta ke Streamlit
-st_data = st_folium(m, width=700, height=500)
+# Menambahkan legenda
+legend_html = """
+{% macro html(this, kwargs) %}
+<div style="
+    position: fixed;
+    bottom: 50px; left: 50px; width: 150px; height: 120px;
+    background-color: white; z-index:9999; font-size:14px;
+    border:2px solid grey; padding: 10px;">
+    <b>Status Gizi:</b><br>
+    <i style="background:green; width:10px; height:10px; display:inline-block;"></i> Gizi Baik<br>
+    <i style="background:red; width:10px; height:10px; display:inline-block;"></i> Gizi Buruk<br>
+    <i style="background:orange; width:10px; height:10px; display:inline-block;"></i> Gizi Kurang<br>
+    <i style="background:blue; width:10px; height:10px; display:inline-block;"></i> Gizi Lebih<br>
+</div>
+{% endmacro %}
+"""
 
-# Menampilkan rekomendasi
-st.subheader("Rekomendasi Prioritas Intervensi")
-prioritas_tinggi = data_pivot[data_pivot['Cluster'] == 2]
-st.write("### Desa dengan Prioritas Tinggi:")
-st.table(prioritas_tinggi[['Desa_Kel', 'Gizi Buruk']])
+legend = MacroElement()
+legend._template = Template(legend_html)
+m.get_root().add_child(legend)
+
+# Menampilkan peta di Streamlit
+st.subheader("Peta Persebaran Status Gizi")
+st_folium(m, width=700, height=500)
