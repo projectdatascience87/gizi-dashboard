@@ -65,7 +65,7 @@ if menu == "Beranda":
     st.title("Dashboard Gizi Anak di Indramayu Data Update 2024")
     st.markdown(
         """
-        Selamat datang di dashboard pemetaan dan menganalisis status gizi anak-anak di Kabupaten Indramayu Data Update 2024. 
+        Selamat datang di dashboard pemetaan dan menganalisis status gizi anak ( umur 5 bulan - 5 tahun ) di Kabupaten Indramayu Data Update 2024. 
         Gunakan navigasi di sebelah kiri untuk menjelajahi data.
         """
     )
