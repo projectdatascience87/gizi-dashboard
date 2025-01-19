@@ -6,6 +6,64 @@ from sklearn.cluster import KMeans
 import json
 import random
 
+import pandas as pd
+
+import pandas as pd
+
+file_gabungan = 'Gizi_Anak_Indramayu.xlsx'
+gabungan = pd.read_excel(file_gabungan)
+
+
+if 'Tanggal_Pengukuran' in gabungan.columns:
+    # Bersihkan data kolom
+    gabungan['Tanggal_Pengukuran'] = gabungan['Tanggal_Pengukuran'].astype(str).str.strip()
+
+    # Ubah kolom 'Tanggal_Pengukuran' menjadi format datetime dengan format eksplisit
+    gabungan['Tanggal_Pengukuran'] = pd.to_datetime(
+        gabungan['Tanggal_Pengukuran'],
+        format='%Y-%m-%d %H:%M:%S',
+        errors='coerce'
+    )
+
+    # Filter data hanya untuk tahun 2024
+    data_2024 = gabungan[gabungan['Tanggal_Pengukuran'].dt.year == 2024]
+
+    data_2024 = data_2024.dropna(subset=['Tanggal_Pengukuran'])
+
+elif 'Tanggal Pengukuran' in gabungan.columns:
+    gabungan['Tanggal Pengukuran'] = gabungan['Tanggal Pengukuran'].astype(str).str.strip()
+    gabungan['Tanggal Pengukuran'] = pd.to_datetime(
+        gabungan['Tanggal Pengukuran'],
+        format='%Y-%m-%d %H:%M:%S',
+        errors='coerce'
+    )
+    data_2024 = gabungan[gabungan['Tanggal Pengukuran'].dt.year == 2024]
+    data_2024 = data_2024.dropna(subset=['Tanggal Pengukuran'])
+else:
+    raise ValueError("Kolom 'Tanggal_Pengukuran' atau 'Tanggal Pengukuran' tidak ditemukan dalam data.")
+
+# Fungsi untuk mengekstrak tahun dari string usia
+def extract_years(age_str):
+    if isinstance(age_str, str) and 'Tahun' in age_str:
+        try:
+            return int(age_str.split('Tahun')[0].strip())
+        except ValueError:
+            return None  # Kembalikan None jika tidak bisa dikonversi
+    return None  # Kembalikan None jika format tidak sesuai
+
+# Langkah 3: Mengambil usia dari kolom 'Usia_Saat_Ukur'
+data_2024['Usia_Saat_Ukur'] = data_2024['Usia_Saat_Ukur'].apply(extract_years)
+
+# Menghilangkan kategori 'Outlier' dari data
+data_filtered = data_2024[data_2024['Status_Gizi'] != 'Outlier']
+# Menghitung jumlah anak untuk setiap Status Gizi tanpa kategori 'Outlier'
+status_counts = data_filtered['Status_Gizi'].value_counts().reset_index()
+status_counts.columns = ['Status_Gizi', 'Jumlah']
+
+# Langkah 5: Mengelompokan data berdasarkan Status Gizi, Usia Saat Ukur, dan Wilayah Desa
+grouped_data = data_filtered.groupby(['Desa_Kel', 'Usia_Saat_Ukur', 'Status_Gizi']).size().reset_index(name='Jumlah')
+
+
 # Membaca file GeoJSON
 with open('indramayu.geojson') as f:
     geo_data = json.load(f)
