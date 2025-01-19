@@ -1,0 +1,9 @@
+streamlit
+folium
+streamlit-folium
+scikit-learn
+pandas
+selenium
+geopandas
+pyproj
+lime
