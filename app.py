@@ -62,10 +62,10 @@ menu = st.sidebar.radio(
 
 # Halaman Beranda
 if menu == "Beranda":
-    st.title("Dashboard Gizi Anak di Indramayu")
+    st.title("Dashboard Gizi Anak di Indramayu Data Update 2024")
     st.markdown(
         """
-        Selamat datang di dashboard interaktif untuk memetakan dan menganalisis status gizi anak-anak di Kabupaten Indramayu. 
+        Selamat datang di dashboard pemetaan dan menganalisis status gizi anak-anak di Kabupaten Indramayu Data Update 2024. 
         Gunakan navigasi di sebelah kiri untuk menjelajahi data.
         """
     )
@@ -101,7 +101,7 @@ elif menu == "Clustering":
 
 # Halaman Peta Persebaran
 elif menu == "Peta Persebaran":
-    st.title("Peta Persebaran Status Gizi")
+    st.title("Peta Persebaran Status Gizi Data Update 2024")
     m = folium.Map(location=[-6.454198, 108.3626961], zoom_start=10)
 
     for feature in geo_data['features']:
