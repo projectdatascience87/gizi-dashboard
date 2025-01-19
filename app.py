@@ -12,7 +12,7 @@ with open('indramayu.geojson') as f:
 
 # Membaca data status gizi
 data_file = 'Gizi_Anak_Indramayu.xlsx'  # Ganti dengan nama file data Anda
-data = pd.read_csv(data_file)
+data = pd.read_excel(data_file)
 
 # Mengubah nama desa menjadi uppercase di GeoJSON
 for feature in geo_data['features']:
