@@ -53,90 +53,103 @@ status_colors = {
     'Gizi Lebih': 'blue'
 }
 
-# Judul aplikasi dengan gaya modern
-st.markdown("<h1 style='text-align: center; color: #4CAF50;'>Dashboard Pemetaan dan Analisis Gizi</h1>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align: center; color: #555;'>Kabupaten Indramayu</h3>", unsafe_allow_html=True)
+# Sidebar navigasi
+st.sidebar.title("Dashboard Navigasi")
+menu = st.sidebar.radio(
+    "Pilih Halaman",
+    ["Beranda", "Analisis Gizi Buruk", "Clustering", "Peta Persebaran"]
+)
 
-# Membagi layout menjadi kolom
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Filter Status Gizi")
-    status_filter = st.multiselect(
-        "Pilih Status Gizi untuk Ditampilkan:",
-        options=data['Status_Gizi'].unique(),
-        default=data['Status_Gizi'].unique()
+# Halaman Beranda
+if menu == "Beranda":
+    st.title("Dashboard Gizi Anak di Indramayu")
+    st.markdown(
+        """
+        Selamat datang di dashboard interaktif untuk memetakan dan menganalisis status gizi anak-anak di Kabupaten Indramayu. 
+        Gunakan navigasi di sebelah kiri untuk menjelajahi data.
+        """
     )
-    data_filtered = data[data['Status_Gizi'].isin(status_filter)]
 
-with col2:
-    st.subheader("Data Statistik")
-    worst_gizi = data_filtered[data_filtered['Status_Gizi'] == 'Gizi Buruk']
+# Halaman Analisis Gizi Buruk
+elif menu == "Analisis Gizi Buruk":
+    st.title("Analisis Daerah dengan Tingkat Gizi Terburuk")
+    worst_gizi = data[data['Status_Gizi'] == 'Gizi Buruk']
     worst_summary = worst_gizi.groupby('Desa_Kel').size().reset_index(name='Jumlah Anak Gizi Buruk')
     worst_summary = worst_summary.sort_values(by='Jumlah Anak Gizi Buruk', ascending=False)
-    st.metric("Total Desa", len(worst_summary))
-    st.metric("Total Anak Gizi Buruk", worst_summary['Jumlah Anak Gizi Buruk'].sum())
 
-# Visualisasi tabel dan rekomendasi
-st.subheader("Analisis Daerah dengan Tingkat Gizi Terburuk")
-st.dataframe(worst_summary)
+    st.subheader("Daftar Desa dengan Jumlah Anak Gizi Buruk Tertinggi")
+    st.dataframe(worst_summary)
 
-if not worst_summary.empty:
-    top_desa = worst_summary.iloc[0]
-    st.warning(f"Desa prioritas: **{top_desa['Desa_Kel']}** dengan **{top_desa['Jumlah Anak Gizi Buruk']} anak gizi buruk**.")
+    st.subheader("Rekomendasi Intervensi Pemerintah")
+    if not worst_summary.empty:
+        top_desa = worst_summary.iloc[0]
+        st.write(f"Desa dengan prioritas tertinggi untuk intervensi adalah **{top_desa['Desa_Kel']}**, "
+                 f"dengan jumlah **{top_desa['Jumlah Anak Gizi Buruk']} anak** yang mengalami gizi buruk. "
+                 "Pemerintah dapat memprioritaskan pengiriman makanan bergizi ke desa ini.")
+    else:
+        st.write("Tidak ada data gizi buruk untuk dianalisis.")
 
-# Clustering menggunakan K-Means
-st.subheader("Clustering Berdasarkan Status Gizi")
-cluster_features = data_filtered.groupby('Desa_Kel').size().reset_index(name='Total Anak')
-kmeans = KMeans(n_clusters=3, random_state=42)
-cluster_features['Cluster'] = kmeans.fit_predict(cluster_features[['Total Anak']])
-st.bar_chart(cluster_features.set_index('Desa_Kel')['Total Anak'])
+# Halaman Clustering
+elif menu == "Clustering":
+    st.title("Clustering Daerah Berdasarkan Status Gizi")
+    cluster_features = data.groupby('Desa_Kel').size().reset_index(name='Total Anak')
+    kmeans = KMeans(n_clusters=3, random_state=42)
+    cluster_features['Cluster'] = kmeans.fit_predict(cluster_features[['Total Anak']])
 
-# Membuat peta dasar
-st.subheader("Peta Persebaran Status Gizi")
-m = folium.Map(location=[-6.454198, 108.3626961], zoom_start=10)
+    st.subheader("Hasil Clustering")
+    st.dataframe(cluster_features)
 
-# Menambahkan marker berdasarkan data
-for feature in geo_data['features']:
-    desa_name = feature['properties']['name']
-    subset = data_filtered[data_filtered['Desa_Kel'].str.upper() == desa_name]
-    if not subset.empty:
-        status_counts = subset['Status_Gizi'].value_counts()
-        total_anak = status_counts.sum()
-        dominant_status = status_counts.idxmax()
-        dominant_color = status_colors.get(dominant_status, 'purple')
+# Halaman Peta Persebaran
+elif menu == "Peta Persebaran":
+    st.title("Peta Persebaran Status Gizi")
+    m = folium.Map(location=[-6.454198, 108.3626961], zoom_start=10)
 
-        tooltip_content = f"<b>Desa: {desa_name}</b><br>Total Anak: {total_anak}<br>"
-        for status_gizi, jumlah in status_counts.items():
-            presentase = (jumlah / total_anak) * 100
-            color = status_colors.get(status_gizi, 'purple')
-            tooltip_content += f"<span style='color:{color};'>• {status_gizi}: {jumlah} anak ({presentase:.2f}%)</span><br>"
+    for feature in geo_data['features']:
+        desa_name = feature['properties']['name']
+        subset = data[data['Desa_Kel'].str.upper() == desa_name]
+        if not subset.empty:
+            status_counts = subset['Status_Gizi'].value_counts()
+            total_anak = status_counts.sum()
+            dominant_status = status_counts.idxmax()
+            dominant_color = status_colors.get(dominant_status, 'purple')
 
-        folium.CircleMarker(
-            location=[feature['geometry']['coordinates'][1], feature['geometry']['coordinates'][0]],
-            radius=15,
-            color='black',
-            fill=True,
-            fill_color=dominant_color,
-            fill_opacity=0.8,
-            tooltip=tooltip_content
-        ).add_to(m)
+            tooltip_content = f"<b>Desa: {desa_name}</b><br>Total Anak: {total_anak}<br><br>"
+            for status_gizi, jumlah in status_counts.items():
+                presentase = (jumlah / total_anak) * 100
+                color = status_colors.get(status_gizi, 'purple')
+                tooltip_content += f"""
+                <span style="color:{color};">
+                    • {status_gizi}: {jumlah} anak ({presentase:.2f}%)
+                </span><br>
+                """
 
-# Menambahkan legenda
-legend_html = """
-{% macro html(this, kwargs) %}
-<div style="position: fixed; bottom: 50px; left: 50px; width: 200px; height: 150px; 
-background-color: white; z-index:9999; font-size:14px; border:2px solid grey; padding: 10px;">
-<b>Status Gizi:</b><br>
-<i style="background:green; width:10px; height:10px; display:inline-block;"></i> Gizi Baik<br>
-<i style="background:red; width:10px; height:10px; display:inline-block;"></i> Gizi Buruk<br>
-<i style="background:orange; width:10px; height:10px; display:inline-block;"></i> Gizi Kurang<br>
-<i style="background:blue; width:10px; height:10px; display:inline-block;"></i> Gizi Lebih<br>
-</div>
-{% endmacro %}
-"""
-legend = MacroElement()
-legend._template = Template(legend_html)
-m.get_root().add_child(legend)
+            folium.CircleMarker(
+                location=[feature['geometry']['coordinates'][1], feature['geometry']['coordinates'][0]],
+                radius=15,
+                color='black',
+                fill=True,
+                fill_color=dominant_color,
+                fill_opacity=0.8,
+                tooltip=folium.Tooltip(tooltip_content, sticky=True)
+            ).add_to(m)
 
-st_folium(m, width=700, height=500)
+    legend_html = """
+    {% macro html(this, kwargs) %}
+    <div style="
+        position: fixed;
+        bottom: 50px; left: 50px; width: 150px; height: 120px;
+        background-color: white; z-index:9999; font-size:14px;
+        border:2px solid grey; padding: 10px;">
+        <b>Status Gizi:</b><br>
+        <i style="background:green; width:10px; height:10px; display:inline-block;"></i> Gizi Baik<br>
+        <i style="background:red; width:10px; height:10px; display:inline-block;"></i> Gizi Buruk<br>
+        <i style="background:orange; width:10px; height:10px; display:inline-block;"></i> Gizi Kurang<br>
+        <i style="background:blue; width:10px; height:10px; display:inline-block;"></i> Gizi Lebih<br>
+    </div>
+    {% endmacro %}
+    """
+    legend = MacroElement()
+    legend._template = Template(legend_html)
+    m.get_root().add_child(legend)
+
+    st_folium(m, width=700, height=500)
