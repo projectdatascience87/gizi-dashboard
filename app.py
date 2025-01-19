@@ -10,15 +10,9 @@ import random
 with open('indramayu.geojson') as f:
     geo_data = json.load(f)
 
-# Caching the GeoJSON loading function
-@st.cache
-def load_geo_data():
-    with open('indramayu.geojson') as f:
-        return json.load(f)
 # Mengubah nama desa menjadi uppercase
 for feature in geo_data['features']:
     feature['properties']['name'] = feature['properties']['name'].upper()
-
 
 desa_names = [
     'BOJONGSARI', 'DUKUH', 'KARANGANYAR', 'KARANGMALANG', 'KARANGSONG',
@@ -26,17 +20,17 @@ desa_names = [
     'PAOMAN', 'PECANDANGAN', 'PEKANDANGAN JAYA', 'PLUMBON', 'SINGA',
     'SINGARAJA', 'TAMBAK', 'TELUKAGUNG'
 ]
+
 # Generate random data for Status_Gizi to match the length of desa_names
 status_gizi_options = ['Gizi Buruk', 'Gizi Baik', 'Gizi Kurang', 'Gizi Lebih']
 status_gizi = [random.choice(status_gizi_options) for _ in range(len(desa_names))]
 
-# Membaca data gizi
+# Membuat data gizi
 data_filtered = pd.DataFrame({
-    'Desa_Kel': desa_names,  # Automatically using desa names from geo_data
-    'Status_Gizi': status_gizi  # Randomly generated Status_Gizi
+    'Desa_Kel': desa_names,
+    'Status_Gizi': status_gizi
 })
 
-# Membaca data gizi
 data_filtered['Desa_Kel'] = data_filtered['Desa_Kel'].str.upper()
 
 # Membuat pivot table berdasarkan Status_Gizi
@@ -47,8 +41,8 @@ data_pivot = data_filtered.pivot_table(
     fill_value=0
 ).reset_index()
 
-# Mengganti nama kolom untuk kemudahan
 data_pivot.columns.name = None
+
 data_pivot = data_pivot.rename(columns={
     'Desa_Kel': 'Desa_Kel',
     'Gizi Buruk': 'Gizi Buruk',
@@ -67,8 +61,7 @@ for desa in data_pivot['Desa_Kel']:
             found = True
             break
     if not found:
-        # Append a default value if coordinates are not found
-        coordinates.append([0, 0])  # Or append None if you prefer
+        coordinates.append([0, 0])
 
 data_pivot['Coordinates'] = coordinates
 
@@ -103,10 +96,9 @@ for _, row in data_pivot.iterrows():
     Prioritas Intervensi: {"Tinggi" if cluster == 2 else "Sedang" if cluster == 1 else "Rendah"}
     """
 
-    # Check if coordinates are valid before adding marker
     if coords != [0, 0]:
         folium.CircleMarker(
-            location=[coords[1], coords[0]],  # GeoJSON stores coordinates as [lon, lat]
+            location=[coords[1], coords[0]],
             radius=15,
             color='black',
             fill=True,
@@ -123,4 +115,3 @@ st.subheader("Rekomendasi Prioritas Intervensi")
 prioritas_tinggi = data_pivot[data_pivot['Cluster'] == 2]
 st.write("### Desa dengan Prioritas Tinggi:")
 st.table(prioritas_tinggi[['Desa_Kel', 'Gizi Buruk']])
-
